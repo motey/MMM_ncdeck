@@ -4,7 +4,7 @@ A [MagicMirror](https://magicmirror.builders/) module for viewing a board of the
 
 ## Screenshots
 
-**Simple Mode Colored**
+**Complex Mode Colored**
 
 ![simple mode](https://raw.githubusercontent.com/motey/MMM_ncdeck/master/doc/colored_non_simple.png)
 
@@ -12,7 +12,7 @@ A [MagicMirror](https://magicmirror.builders/) module for viewing a board of the
 
 ![complex mode](https://raw.githubusercontent.com/motey/MMM_ncdeck/master/doc/non-colored-non-simple.png)
 
-**Complex Mode Colored**
+**Simple Mode Colored**
 
 ![complex mode colored](https://raw.githubusercontent.com/motey/MMM_ncdeck/master/doc/non-colored-simple.png)
 
