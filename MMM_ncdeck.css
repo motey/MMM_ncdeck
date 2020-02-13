@@ -1,0 +1,77 @@
+.ncdeck-table {
+    margin: 0;
+    padding: 0;
+
+}
+
+.ncdeck-container-header-row {
+    background-color: #515151;
+    text-align: center
+}
+
+.ncdeck-container-cell {
+    border: 0px;
+    border-right: solid 1px;
+    border-left: solid 1px;
+    padding: 0px 0px;
+    border-style: solid;
+    overflow: hidden;
+    word-break: normal;
+}
+
+.ncdeck-container-content-cell {
+    vertical-align: top;
+}
+
+
+.ncdeck-card th {
+    background-color: #313131;
+}
+
+
+.ncdeck-card td {
+    line-height: 13px;
+}
+
+.ncdeck-card {
+    border: 0px;
+    padding: 0px 0px;
+}
+
+.ncdeck-card {
+    border-bottom: 1px dashed;
+}
+
+.ncdeck-card td {
+    border: 0px;
+    padding: 0px 0px;
+}
+
+.ncdeck-label .text {}
+
+.ncdeck-label {
+    background-color: gray;
+    border-radius: 4px;
+    display: inline-block;
+    cursor: pointer;
+    color: #ffffff;
+    padding: 0px 4px;
+    margin: 1px;
+    text-decoration: none;
+    line-height: 14px;
+}
+
+@media screen and (max-width: 767px) {
+    .tg {
+        width: auto !important;
+    }
+
+    .tg col {
+        width: auto !important;
+    }
+
+    .tg-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
