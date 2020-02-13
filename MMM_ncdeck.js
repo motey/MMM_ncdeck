@@ -114,7 +114,7 @@ Module.register("MMM_ncdeck", {
                 // Skip hidden stacks
                 continue;
             }
-            table_header_row += '<th class="ncdeck-container-cell ncdeck-container-header-cell medium">' + stack.title + '</th>'
+            table_header_row += '<th class="ncdeck-container-cell ncdeck-container-header-cell small">' + stack.title + '</th>'
 
             table_content_row += '<td class="ncdeck-container-cell ncdeck-container-content-cell">'
             table_content_row += self.renderStackContent(stack)
@@ -158,7 +158,7 @@ Module.register("MMM_ncdeck", {
     renderCard(cardObject) {
         var self = this
         var html = '<table class="ncdeck-table ncdeck-card">'
-        html += '       <tr><th><span class="small">' + cardObject.title + '</span></th></tr>'
+        html += '       <tr><th><span class="small light">' + cardObject.title + '</span></th></tr>'
         if (cardObject.hasOwnProperty("labels")) {
             html += '       <tr><td class="ncdeck-card-content-labels">'
             html += self.renderLabels(cardObject.labels)
