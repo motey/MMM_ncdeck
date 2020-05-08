@@ -141,7 +141,11 @@ Module.register("MMM_ncdeck", {
         } else {
             return html + "</table>"
         }
-        for (let i = 0; i < stackObject.cards.length; i++) {
+        var cards_amount = stackObject.cards.length
+        if (Number.isInteger(maxCardsPerStack)) {
+            cards_amount = maxCardsPerStack
+        }
+        for (let i = 0; i < cards_amount; i++) {
             var card = cards[i]
             html += '<tr><th><span class=ncdeck-stack-row>'
             if (self.config.simpleLayout) {
