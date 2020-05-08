@@ -143,7 +143,9 @@ Module.register("MMM_ncdeck", {
         }
         var cards_amount = stackObject.cards.length
         if (Number.isInteger(self.config.maxCardsPerStack)) {
-            cards_amount = self.config.maxCardsPerStack
+            if (stackObject.cards.length > self.config.maxCardsPerStack) {
+                cards_amount = self.config.maxCardsPerStack
+            }
         }
         for (let i = 0; i < cards_amount; i++) {
             var card = cards[i]
