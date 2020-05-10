@@ -1,7 +1,7 @@
 const request = require('request');
 var NodeHelper = require('node_helper')
 var pathlib = require('path');
-const api_base_url = '/apps/deck/api/v1.0'
+const api_base_url = '/index.php/apps/deck/api/v1.0'
 
 function requestNcDeckApi(host, user, pass, path, query, callback, error_callback) {
     const options = {
