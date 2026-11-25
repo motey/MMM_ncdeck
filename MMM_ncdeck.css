@@ -1,77 +1,92 @@
-.ncdeck-table {
-    margin: 0;
-    padding: 0;
-
+/*
+ * MMM_ncdeck. Override the variables in your custom.css, e.g.
+ *   .MMM_ncdeck { --ncdeck-header-bg: #333; }
+ */
+.MMM_ncdeck {
+  --ncdeck-line: #777;
+  --ncdeck-header-bg: #515151;
+  --ncdeck-header-fg: #e0e0e0;
+  --ncdeck-card-title-bg: #313131;
+  --ncdeck-label-bg: #808080;
+  --ncdeck-due-soon: #ffd166;
+  --ncdeck-due-overdue: #ff6b6b;
 }
 
-.ncdeck-container-header-row {
-    background-color: #515151;
-    text-align: center
+.ncdeck-board {
+  display: grid;
+  border-right: 1px solid var(--ncdeck-line);
 }
 
-.ncdeck-container-cell {
-    border: 0px;
-    border-right: solid 1px;
-    border-left: solid 1px;
-    padding: 0px 0px;
-    border-style: solid;
-    overflow: hidden;
-    word-break: normal;
+.ncdeck-stack-header,
+.ncdeck-stack {
+  border-left: 1px solid var(--ncdeck-line);
+  min-width: 0;
 }
 
-.ncdeck-container-content-cell {
-    vertical-align: top;
-}
-
-
-.ncdeck-card th {
-    background-color: #313131;
-}
-
-
-.ncdeck-card td {
-    line-height: 13px;
-}
-
-.ncdeck-card {
-    border: 0px;
-    padding: 0px 0px;
+.ncdeck-stack-header {
+  background: var(--ncdeck-header-bg);
+  color: var(--ncdeck-header-fg);
+  font-weight: bold;
+  text-align: center;
+  padding: 0 6px;
 }
 
 .ncdeck-card {
-    border-bottom: 1px dashed;
+  border-bottom: 1px dashed var(--ncdeck-line);
+  padding-bottom: 2px;
 }
 
-.ncdeck-card td {
-    border: 0px;
-    padding: 0px 0px;
+.ncdeck-card-title {
+  background: var(--ncdeck-card-title-bg);
+  padding: 0 4px;
 }
 
-.ncdeck-label .text {}
+.ncdeck-card-simple .ncdeck-card-title {
+  background: none;
+}
+
+.ncdeck-card-labels,
+.ncdeck-card-meta {
+  line-height: 1.2;
+  padding: 0 4px;
+}
+
+.ncdeck-card-meta > * + * {
+  margin-left: 0.5em;
+}
 
 .ncdeck-label {
-    background-color: gray;
-    border-radius: 4px;
-    display: inline-block;
-    cursor: pointer;
-    color: #ffffff;
-    padding: 0px 4px;
-    margin: 1px;
-    text-decoration: none;
-    line-height: 14px;
+  display: inline-block;
+  background: var(--ncdeck-label-bg);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 1px;
+  line-height: 14px;
 }
 
-@media screen and (max-width: 767px) {
-    .tg {
-        width: auto !important;
-    }
+/* coloredLabels: false keeps the brightness of the Deck color but drops the hue */
+.ncdeck-labels-gray {
+  mix-blend-mode: luminosity;
+}
 
-    .tg col {
-        width: auto !important;
-    }
+.ncdeck-due-soon {
+  color: var(--ncdeck-due-soon);
+}
 
-    .tg-wrap {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
+.ncdeck-due-overdue {
+  color: var(--ncdeck-due-overdue);
+  font-weight: normal;
+}
+
+.ncdeck-card-done {
+  opacity: 0.6;
+}
+
+.ncdeck-card-done .ncdeck-card-title {
+  text-decoration: line-through;
+}
+
+.ncdeck-status {
+  margin-top: 2px;
 }

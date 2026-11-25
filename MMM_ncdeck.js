@@ -1,285 +1,195 @@
+/*
+ * MMM_ncdeck: shows a Nextcloud Deck board on the mirror.
+ *
+ * The browser never talks to Nextcloud and never sends credentials. It asks the node_helper
+ * for "its" board by a key without secrets and renders what comes back. All text goes into
+ * the page via textContent, never as HTML.
+ */
 Module.register("MMM_ncdeck", {
-    // Default module config.
-    defaults: {
-        nextcloud: {
-            host: "http://127.0.0.1",
-            user: "",
-            pass: ""
-        },
-        updateIntervalSec: 120,
-        deckBoardId: null,
-        hideStacks: [],
-        coloredHeader: true,
-        simpleLayout: false,
-        complexLayout: {
-            coloredLabels: true,
-            showLabels: true,
-            showAssignedUser: true,
-        },
-        maxCardsPerStack: null,
-    },
-    getScripts: function () {
-        return [
-            'moment.js',
-            'tinycolor.js' // https://github.com/bgrins/TinyColor
-        ]
-    },
-    getStyles: function () {
-        return ["MMM_ncdeck.css"];
-    },
-    getTranslations: function () {
-        return false;
-    },
-    start: function () {
-        this.board = {}
-        this.error = null
-        Log.info("Starting module!: " + this.name + ", identifier: " + this.identifier);
+	// Keep nextcloud and deckBoardId in sync with SERVER_DEFAULTS in lib/service.js
+	defaults: {
+		nextcloud: {
+			host: "http://127.0.0.1",
+			user: "",
+			pass: ""
+		},
+		deckBoardId: null,
+		updateIntervalSec: 120,
+		hideStacks: [],
+		hideDoneCards: false,
+		maxCardsPerStack: null,
+		coloredHeader: true,
+		simpleLayout: false,
+		highlightDueCards: true,
+		complexLayout: {
+			coloredLabels: true,
+			showLabels: true,
+			showAssignedUser: true
+		}
+	},
 
-        this.getData();
-    },
-    getData: function () {
-        Log.info(this.name + ": Init Data for Board " + this.config.deckBoardId + "@" + this.config.nextcloud.host)
-        const self = this;
-        self.sendSocketNotification("GET_NC_DECK_BOARD_INFO", {
-            "ncConfig": this.config.nextcloud,
-            "boardId": this.config.deckBoardId,
-            "instanceId": this.identifier
-        });
-        self.sendSocketNotification("GET_NC_DECK_BOARD_STACKS", {
-            "ncConfig": this.config.nextcloud,
-            "boardId": this.config.deckBoardId,
-            "instanceId": this.identifier
-        });
-        setInterval(function () {
-            self.sendSocketNotification("GET_NC_DECK_BOARD_STACKS", {
-                "ncConfig": self.config.nextcloud,
-                "boardId": self.config.deckBoardId,
-                "instanceId": self.identifier
-            });
-        }, self.config.updateIntervalSec * 1000);
-    },
+	// MagicMirror merges defaults only one level deep, so a partial complexLayout {} would
+	// lose the other defaults. Merge the nested objects here.
+	setConfig (moduleConfig) {
+		this.config = {
+			...this.defaults,
+			...moduleConfig,
+			nextcloud: { ...this.defaults.nextcloud, ...moduleConfig?.nextcloud },
+			complexLayout: { ...this.defaults.complexLayout, ...moduleConfig?.complexLayout }
+		};
+	},
 
-    // Override getHeader method.
-    getHeader: function () {
-        if (Object.keys(this.board).length === 0 || !this.board.hasOwnProperty("info")) {
-            // Board info is not yet loaded
-            return "Nextcloud Deck"
-        } else {
-            return this.board.info.title
-        }
-    },
+	getScripts () {
+		return [this.file("lib/shared.js")];
+	},
 
-    // Override dom generator.
-    getDom: function () {
+	getStyles () {
+		return ["MMM_ncdeck.css"];
+	},
 
-        var wrapperTable = document.createElement("div");
-        if (this.config.deckBoardId === null) {
-            wrapperTable.className = "module dimmed light small";
-            wrapperTable.innerHTML = "No config.deckBoardId set.";
-            return wrapperTable;
-        }
-        if (Object.keys(this.board).length === 0) {
-            wrapperTable.className = "module dimmed light small";
-            wrapperTable.innerHTML = "Loading Deckboard from " + this.config.nextcloud.host + "...";
-            return wrapperTable;
-        }
-        if (this.board.stacks.length === 0) {
-            wrapperTable.className = "module dimmed light small";
-            wrapperTable.innerHTML = "Loading Board Stacks from " + this.config.nextcloud.host + "...";
-            return wrapperTable;
-        }
-        wrapper = document.createElement("table");
-        wrapper.className = "module small ncdeck-table";
-        wrapper.innerHTML = this.getHtml()
-        return wrapper
+	start () {
+		this.state = null;
+		this.startedAt = Date.now();
+		this.lastReceived = 0;
+		this.key = NcDeckShared.instanceKey(this.config);
+		if (!this.hasBoardId()) return;
+		this.subscribe();
 
-    },
+		// Every minute: refresh relative due times, and subscribe again if the helper went
+		// quiet (e.g. it was restarted while this page stayed open).
+		const intervalMs = Math.max(Number(this.config.updateIntervalSec) || 120, 30) * 1000;
+		setInterval(() => {
+			if (Date.now() - Math.max(this.lastReceived, this.startedAt) > 3 * intervalMs) this.subscribe();
+			if (!this.state?.board || this.state.stacks?.some((s) => s.cards.some((c) => c.due))) this.updateDom();
+		}, 60 * 1000);
+	},
 
-    getHtml: function () {
-        const self = this
-        let table_header_row_style = ''
-        if (this.config.coloredHeader) {
-            var textColor = "#313131"
-            if (tinycolor("#" + this.board.info.color).isDark()) {
-                textColor = "#d3d3d3"
-            }
-            table_header_row_style = "background: #" + this.board.info.color + "; color:" + textColor
-        }
+	subscribe () {
+		this.sendSocketNotification("NCDECK_SUBSCRIBE", { key: this.key });
+	},
 
-        let table_header_row = '<tr class="ncdeck-container-header-row" style="' + table_header_row_style + '">'
-        let table_content_row = '<tr class="ncdeck-container-content-row">'
-        for (let i = 0; i < this.board.stacks.length; i++) {
-            let stack = this.board.stacks[i]
-            if (this.config.hideStacks.includes(stack.title)) {
-                // Skip hidden stacks
-                continue;
-            }
-            table_header_row += '<th class="ncdeck-container-cell ncdeck-container-header-cell small">' + stack.title + '</th>'
+	hasBoardId () {
+		const id = Number(this.config.deckBoardId);
+		return this.config.deckBoardId !== null && Number.isInteger(id) && id > 0;
+	},
 
-            table_content_row += '<td class="ncdeck-container-cell ncdeck-container-content-cell">'
-            table_content_row += self.renderStackContent(stack)
-            table_content_row += '</td>'
-        }
-        table_content_row += '</tr>'
-        table_header_row += '</tr>'
+	socketNotificationReceived (notification, payload) {
+		if (notification !== "NCDECK_STATE" || payload?.key !== this.key) return;
+		if (!payload.ok) Log.warn(`[${this.name}] ${payload.error}`);
+		this.state = payload;
+		this.lastReceived = Date.now();
+		this.updateDom();
+	},
 
+	getHeader () {
+		return this.data.header || this.state?.board?.title || "Nextcloud Deck";
+	},
 
-        let table = '<table class="ncdeck-table ncdeck-container">'
-        table += table_header_row
-        table += table_content_row
-        table += '</table>'
-        return table
+	// ---- rendering ---------------------------------------------------------
 
-    },
+	el (tag, className, text) {
+		const element = document.createElement(tag);
+		if (className) element.className = className;
+		if (text !== undefined) element.textContent = text;
+		return element;
+	},
 
-    renderStackContent(stackObject) {
-        const self = this
-        let html = '<table class="ncdeck-table ncdeck-stack-content">'
-        var cards = []
-        if (stackObject.hasOwnProperty("cards")) {
-            cards = stackObject.cards
-        } else {
-            return html + "</table>"
-        }
-        var cards_amount = stackObject.cards.length
-        if (Number.isInteger(self.config.maxCardsPerStack)) {
-            if (stackObject.cards.length > self.config.maxCardsPerStack) {
-                cards_amount = self.config.maxCardsPerStack
-            }
-        }
-        for (let i = 0; i < cards_amount; i++) {
-            var card = cards[i]
-            html += '<tr><th><span class=ncdeck-stack-row>'
-            if (self.config.simpleLayout) {
-                html += card.title
-            } else {
-                html += self.renderCard(card)
-            }
-            html += '</span></th></tr>'
-        }
-        html += '</table>'
-        return html
-    },
+	message (text) {
+		return this.el("div", "ncdeck-message dimmed light small", text);
+	},
 
-    renderCard(cardObject) {
-        var self = this
-        var html = '<table class="ncdeck-table ncdeck-card">'
-        html += '       <tr><th><span class="small light">' + cardObject.title + '</span></th></tr>'
-        if (cardObject.hasOwnProperty("labels")) {
-            html += '       <tr><td class="ncdeck-card-content-labels">'
-            html += self.renderLabels(cardObject.labels)
-            html += '       </td></tr>'
-        }
-        html += '       <tr><td>'
-        if (cardObject.hasOwnProperty("assignedUsers")) {
+	getDom () {
+		if (!this.hasBoardId()) return this.message("No deckBoardId set in the config.");
+		const state = this.state;
+		if (!state) {
+			// The helper answers within a second; no answer usually means a config mismatch
+			return Date.now() - this.startedAt > 30 * 1000
+				? this.message("No answer from the MagicMirror server for this board, see its log.")
+				: this.message(`Loading Deck board from ${this.config.nextcloud.host} ...`);
+		}
+		if (!state.board) return this.message(state.error ?? "No data.");
 
-            html += self.renderUsers(cardObject.assignedUsers)
+		const wrapper = this.el("div", "ncdeck small");
+		wrapper.append(this.renderBoard(state.board, NcDeckShared.filterStacks(state.stacks, this.config)));
+		if (!state.ok) wrapper.append(this.renderStaleHint(state));
+		return wrapper;
+	},
 
-        }
-        if (cardObject.hasOwnProperty("duedate") && cardObject.duedate != null) {
-            html += self.renderDueDate(cardObject.duedate)
-        }
-        html += '       </td></tr>'
-        html += '</table>'
-        return html
-    },
+	renderBoard (board, stacks) {
+		const grid = this.el("div", "ncdeck-board");
+		grid.style.gridTemplateColumns = `repeat(${Math.max(stacks.length, 1)}, auto)`;
+		// First all headers, then all columns: the grid puts them into two rows
+		for (const stack of stacks) {
+			const header = this.el("div", "ncdeck-stack-header", stack.title);
+			if (this.config.coloredHeader && board.color) this.applyColor(header, board.color);
+			grid.append(header);
+		}
+		for (const stack of stacks) {
+			const column = this.el("div", "ncdeck-stack");
+			for (const card of stack.cards) column.append(this.renderCard(card));
+			grid.append(column);
+		}
+		return grid;
+	},
 
-    renderLabels(labels) {
-        var self = this
-        if (!self.config.complexLayout.showLabels) {
-            return ''
-        }
-        var html = "<span>"
-        if (!self.config.complexLayout.coloredLabels) {
-            html = '<span style="mix-blend-mode: luminosity">'
-        }
-        labels.forEach(function (label) {
-            var textColor = "#313131"
-            if (tinycolor("#" + label.color).isDark()) {
-                textColor = "#d3d3d3"
-            }
-            var style = 'background-color:#' + label.color
-            style += ';color:' + textColor
-            html += '<span class="ncdeck-label xsmall bold" style="' + style + '"><span class="text">' + label.title + '</span></span>'
-        });
-        return html + '</span>'
-    },
+	renderCard (card) {
+		const element = this.el("div", "ncdeck-card");
+		if (card.done) element.classList.add("ncdeck-card-done");
+		element.append(this.el("div", "ncdeck-card-title light", card.title));
+		if (this.config.simpleLayout) {
+			element.classList.add("ncdeck-card-simple");
+			return element;
+		}
+		const layout = this.config.complexLayout;
+		if (layout.showLabels && card.labels.length) {
+			const labels = this.el("div", "ncdeck-card-labels");
+			if (!layout.coloredLabels) labels.classList.add("ncdeck-labels-gray");
+			for (const label of card.labels) {
+				const chip = this.el("span", "ncdeck-label xsmall bold", label.title);
+				if (label.color) this.applyColor(chip, label.color);
+				labels.append(chip);
+			}
+			element.append(labels);
+		}
+		const meta = this.el("div", "ncdeck-card-meta xsmall");
+		if (layout.showAssignedUser && card.users.length) {
+			meta.append(this.el("span", "ncdeck-user light", card.users.join(", ")));
+		}
+		if (card.due) meta.append(this.renderDue(card));
+		if (meta.childElementCount) element.append(meta);
+		return element;
+	},
 
-    renderUsers(users) {
-        if (!this.config.complexLayout.showAssignedUser) {
-            return ''
-        }
-        if (users == undefined) {
-            return ''
-        }
-        console.log("USERS", users)
-        var html = ''
-        for (let i = 0; users.length > i; i++) {
-            let user = users[i]
-            html += '<span class="ncdeck-user xsmall light">' + user.participant.displayname
-            if (i < users.length - 1) {
-                html += ', '
-            }
-            html += '</span>'
-        }
-        return html
-    },
+	renderDue (card) {
+		const now = Date.now();
+		const due = this.el("span", "ncdeck-duetime bright thin", NcDeckShared.formatRelative(card.due, now, this.locale()));
+		const state = NcDeckShared.dueState(card.due, now);
+		if (this.config.highlightDueCards && !card.done && (state === "overdue" || state === "soon")) {
+			due.classList.add(`ncdeck-due-${state}`);
+		}
+		due.title = new Date(card.due).toLocaleString(this.locale());
+		return due;
+	},
 
-    renderDueDate(date) {
-        return '<span class="ncdeck-duetime bright xsmall thin"> ' + moment(date).fromNow() + "</span>" //2020-02-13T21:01:26+00:00
-    },
+	renderStaleHint (state) {
+		const parts = [];
+		if (state.fetchedAt) {
+			const fetched = new Date(state.fetchedAt);
+			const sameDay = fetched.toDateString() === new Date().toDateString();
+			const options = sameDay ? { hour: "2-digit", minute: "2-digit" } : { dateStyle: "short", timeStyle: "short" };
+			parts.push(`Last update ${fetched.toLocaleString(this.locale(), options)}`);
+		}
+		parts.push(state.error);
+		return this.el("div", "ncdeck-status xsmall dimmed", parts.join(" · "));
+	},
 
+	/** Background from Deck, text light or dark depending on the background. */
+	applyColor (element, hex) {
+		element.style.backgroundColor = `#${hex}`;
+		element.style.color = NcDeckShared.isDarkColor(hex) ? "#d3d3d3" : "#313131";
+	},
 
-
-    pivotStacks(stacks) {
-        largest_stack_length = stacks.map(x => x.length).reduce(function (a, b) {
-            return Math.max(a, b)
-        })
-        rows = []
-        for (let i = 0; i < largest_stack_length; i++) {
-            rows[i] = []
-            for (let s_i = 0; s_i < stacks.length; s_i++) {
-                rows[i].push(stacks[s_i][i])
-            }
-        }
-        return rows
-    },
-
-    notificationIsForThisInstance(payload) {
-        if (payload.moduleInstanceId == this.identifier) {
-            return true
-        } else {
-            return false
-        }
-    },
-
-    socketNotificationReceived: function (notification, payload) {
-        if (this.notificationIsForThisInstance(payload)) {
-            this.error = null
-            switch (notification) {
-                case "NC_DECK_API_ERROR":
-                    this.error = payload;
-                    Log.error(payload)
-                    break;
-                case "NC_DECK_BOARD_INFO":
-                    //Log.info("NC_DECK_BOARD_INFO", payload)
-                    this.board.info = payload.data;
-                    if (!this.board.hasOwnProperty("stacks")) {
-                        this.board.stacks = []
-                    }
-
-                    break;
-                case "NC_DECK_BOARD_STACKS":
-                    this.board.stacks = payload.data;
-                    break;
-            }
-            this.updateDom();
-        }
-
-    }
-
-
-
-}
-
-);
+	locale () {
+		return config.locale || config.language || "en";
+	}
+});
