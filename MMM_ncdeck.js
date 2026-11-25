@@ -1,13 +1,15 @@
 /*
- * MMM_ncdeck: shows a Nextcloud Deck board on the mirror.
+ * MMM_ncdeck: shows a Nextcloud Deck board on the mirror, or (view: "upcoming") the cards with
+ * due dates from all boards, grouped like Deck's "Upcoming cards" page.
  *
  * The browser never talks to Nextcloud and never sends credentials. It asks the node_helper
  * for "its" board by a key without secrets and renders what comes back. All text goes into
  * the page via textContent, never as HTML.
  */
 Module.register("MMM_ncdeck", {
-	// Keep nextcloud and deckBoardId in sync with SERVER_DEFAULTS in lib/service.js
+	// Keep nextcloud, deckBoardId and view in sync with SERVER_DEFAULTS in lib/service.js
 	defaults: {
+		view: "board", // or "upcoming"
 		nextcloud: {
 			host: "http://127.0.0.1",
 			user: "",
@@ -25,6 +27,12 @@ Module.register("MMM_ncdeck", {
 			coloredLabels: true,
 			showLabels: true,
 			showAssignedUser: true
+		},
+		upcoming: {
+			boards: [], // board IDs or titles, empty = all
+			days: null, // only cards due within this many days (overdue ones always), null = all
+			showBoardName: true,
+			showEmptyGroups: false
 		}
 	},
 
@@ -35,7 +43,8 @@ Module.register("MMM_ncdeck", {
 			...this.defaults,
 			...moduleConfig,
 			nextcloud: { ...this.defaults.nextcloud, ...moduleConfig?.nextcloud },
-			complexLayout: { ...this.defaults.complexLayout, ...moduleConfig?.complexLayout }
+			complexLayout: { ...this.defaults.complexLayout, ...moduleConfig?.complexLayout },
+			upcoming: { ...this.defaults.upcoming, ...moduleConfig?.upcoming }
 		};
 	},
 
@@ -47,12 +56,18 @@ Module.register("MMM_ncdeck", {
 		return ["MMM_ncdeck.css"];
 	},
 
+	getTranslations () {
+		return { en: "translations/en.json", de: "translations/de.json" };
+	},
+
 	start () {
 		this.state = null;
 		this.startedAt = Date.now();
 		this.lastReceived = 0;
+		// lib/shared.js is loaded after setConfig(), so this happens here
+		this.upcomingView = NcDeckShared.viewOf(this.config) === "upcoming";
 		this.key = NcDeckShared.instanceKey(this.config);
-		if (!this.hasBoardId()) return;
+		if (!this.upcomingView && !this.hasBoardId()) return;
 		this.subscribe();
 
 		// Every minute: refresh relative due times, and subscribe again if the helper went
@@ -60,7 +75,8 @@ Module.register("MMM_ncdeck", {
 		const intervalMs = Math.max(Number(this.config.updateIntervalSec) || 120, 30) * 1000;
 		setInterval(() => {
 			if (Date.now() - Math.max(this.lastReceived, this.startedAt) > 3 * intervalMs) this.subscribe();
-			if (!this.state?.board || this.state.stacks?.some((s) => s.cards.some((c) => c.due))) this.updateDom();
+			const hasDue = this.upcomingView || this.state?.stacks?.some((s) => s.cards.some((c) => c.due));
+			if (!this.state || hasDue) this.updateDom();
 		}, 60 * 1000);
 	},
 
@@ -82,7 +98,9 @@ Module.register("MMM_ncdeck", {
 	},
 
 	getHeader () {
-		return this.data.header || this.state?.board?.title || "Nextcloud Deck";
+		if (this.data.header) return this.data.header;
+		if (this.upcomingView) return this.translate("UPCOMING");
+		return this.state?.board?.title || "Nextcloud Deck";
 	},
 
 	// ---- rendering ---------------------------------------------------------
@@ -99,7 +117,7 @@ Module.register("MMM_ncdeck", {
 	},
 
 	getDom () {
-		if (!this.hasBoardId()) return this.message("No deckBoardId set in the config.");
+		if (!this.upcomingView && !this.hasBoardId()) return this.message("No deckBoardId set in the config.");
 		const state = this.state;
 		if (!state) {
 			// The helper answers within a second; no answer usually means a config mismatch
@@ -107,10 +125,29 @@ Module.register("MMM_ncdeck", {
 				? this.message("No answer from the MagicMirror server for this board, see its log.")
 				: this.message(`Loading Deck board from ${this.config.nextcloud.host} ...`);
 		}
+		if (this.upcomingView) return this.renderUpcoming(state);
 		if (!state.board) return this.message(state.error ?? "No data.");
 
 		const wrapper = this.el("div", "ncdeck small");
 		wrapper.append(this.renderBoard(state.board, NcDeckShared.filterStacks(state.stacks, this.config)));
+		if (!state.ok) wrapper.append(this.renderStaleHint(state));
+		return wrapper;
+	},
+
+	renderUpcoming (state) {
+		if (!state.upcoming) return this.message(state.error ?? "No data.");
+		const groups = NcDeckShared.groupUpcoming(state.upcoming, Date.now(), {
+			...this.config.upcoming,
+			hideDoneCards: this.config.hideDoneCards,
+			maxCardsPerStack: this.config.maxCardsPerStack
+		});
+		const wrapper = this.el("div", "ncdeck ncdeck-upcoming small");
+		if (groups.length) {
+			const columns = groups.map((group) => ({ title: this.translate(`GROUP_${group.id.toUpperCase()}`), cards: group.cards }));
+			wrapper.append(this.renderBoard({ color: null }, columns));
+		} else {
+			wrapper.append(this.message(this.translate("NO_UPCOMING")));
+		}
 		if (!state.ok) wrapper.append(this.renderStaleHint(state));
 		return wrapper;
 	},
@@ -152,6 +189,9 @@ Module.register("MMM_ncdeck", {
 			element.append(labels);
 		}
 		const meta = this.el("div", "ncdeck-card-meta xsmall");
+		if (this.upcomingView && this.config.upcoming.showBoardName && card.board?.title) {
+			meta.append(this.el("span", "ncdeck-board-name", card.board.title));
+		}
 		if (layout.showAssignedUser && card.users.length) {
 			meta.append(this.el("span", "ncdeck-user light", card.users.join(", ")));
 		}

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.0 (2026-11-25)
+
+### New
+
+* Upcoming view (`view: "upcoming"`): cards with due dates from all boards, in the columns
+  Overdue, Today, Tomorrow, Next 7 days and Later, like the "Upcoming cards" page in Deck. Can be
+  limited to some boards (`upcoming.boards`) and a number of days (`upcoming.days`). Column titles
+  in English and German.
+
+### Fixed
+
+* Relative times just under an hour read "in 1 hour" instead of "in 60 minutes".
+
 ## 2.0.0 (2026-11-25)
 
 Rewritten from scratch. Existing configurations keep working.

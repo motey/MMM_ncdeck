@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { createDeckClient, apiBase, toStacks } = require("../lib/deck-api");
+const { createDeckClient, apiBase, toStacks, toUpcoming } = require("../lib/deck-api");
 
 function jsonResponse (body, status = 200, headers = {}) {
 	return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
@@ -109,4 +109,37 @@ test("toStacks sorts, drops deleted and archived, and keeps only displayed field
 		{ id: 2, title: "Done", cards: [] }
 	]);
 	assert.throws(() => toStacks({ message: "nope" }), /not an array/);
+});
+
+test("getUpcoming calls the OCS overview and keeps cards with due dates", async () => {
+	const ocs = {
+		ocs: {
+			meta: { status: "ok" },
+			data: {
+				overdue: [{ id: 2, title: "late", duedate: "2026-11-20T10:00:00+00:00", boardId: 7, board: { id: 7, title: "Home" }, labels: [], assignedUsers: [], description: "secret notes" }],
+				later: [{ id: 1, title: "later", duedate: "2026-12-24T10:00:00+00:00", board: { id: 3, title: "Gifts" }, labels: [{ title: "x", color: "CC317C" }], assignedUsers: [], done: null }],
+				nodue: [{ id: 3, title: "no date", duedate: null, board: { id: 7, title: "Home" } }],
+				today: [{ id: 4, title: "archived", duedate: "2026-11-25T10:00:00+00:00", archived: true, board: { id: 7, title: "Home" } }]
+			}
+		}
+	};
+	const { fetch, calls } = fakeFetch(() => jsonResponse(ocs));
+	const client = createDeckClient({ host: "https://x.org/nextcloud", user: "tim", pass: "s3cret", fetch });
+	const cards = await client.getUpcoming();
+	assert.equal(calls[0].url, "https://x.org/nextcloud/ocs/v2.php/apps/deck/api/v1.0/overview/upcoming?format=json");
+	assert.equal(calls[0].options.headers["OCS-APIRequest"], "true");
+	assert.equal(calls[0].options.redirect, "manual");
+	assert.deepEqual(cards.map((c) => [c.id, c.board.title]), [[2, "Home"], [1, "Gifts"]]);
+	assert.deepEqual(cards[1], { id: 1, title: "later", labels: [{ title: "x", color: "cc317c" }], users: [], due: Date.parse("2026-12-24T10:00:00+00:00"), done: false, board: { id: 3, title: "Gifts" } });
+	assert.ok(!JSON.stringify(cards).includes("secret notes"));
+});
+
+test("toUpcoming accepts a flat list and rejects other answers", () => {
+	assert.equal(toUpcoming({ ocs: { data: [{ id: 1, duedate: "2026-01-01T00:00:00Z", boardId: 4 }] } })[0].board.id, 4);
+	assert.throws(() => toUpcoming({ message: "nope" }), /no upcoming overview/);
+});
+
+test("upcoming 404 explains the Deck version", async () => {
+	const client = createDeckClient({ ...connection, fetch: async () => jsonResponse({}, 404) });
+	await assert.rejects(client.getUpcoming(), /Deck app 1\.2 or newer/);
 });

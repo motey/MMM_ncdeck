@@ -90,3 +90,7 @@
 .ncdeck-status {
   margin-top: 2px;
 }
+
+.ncdeck-board-name {
+  font-style: italic;
+}

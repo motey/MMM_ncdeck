@@ -220,3 +220,18 @@ test("disabled entries and other modules are ignored", () => {
 	assert.equal(service.loadInstances().size, 0);
 	assert.equal(clients.length, 0);
 });
+
+test("the upcoming view needs no board id and sends the upcoming cards", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const config = { nextcloud: { host: "https://cloud.example.org", user: "tim", pass: PASSWORD }, view: "upcoming" };
+	const full = [{ module: "MMM_ncdeck", config }, { module: "MMM_ncdeck", config: serverConfig() }];
+	const getUpcoming = mock.fn(async () => [{ id: 1, title: "late", due: 5, board: { id: 7, title: "Home" } }]);
+	const { service, sent } = setup({ full, client: { getUpcoming, getBoard: async () => ({ title: "B" }), getStacks: async () => [] } });
+	const key = instanceKey(redact(config));
+	assert.equal(service.loadInstances().size, 2);
+	service.subscribe({ key });
+	await flush();
+	assert.equal(getUpcoming.mock.callCount(), 1);
+	assert.deepEqual(sent[0].payload, { key, ok: true, fetchedAt: 1000, upcoming: [{ id: 1, title: "late", due: 5, board: { id: 7, title: "Home" } }] });
+	service.stop();
+});
